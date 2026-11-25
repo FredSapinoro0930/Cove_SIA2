@@ -1,0 +1,91 @@
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QStackedWidget
+)
+from PySide6.QtCore import Qt
+from trivia_game import TriviaGame
+from pokemon_game import PokemonGame
+
+
+class GameCard(QPushButton):
+    """A big clickable card: icon on the left, title and description on the right."""
+
+    def __init__(self, icon, title, description):
+        super().__init__()
+        self.setObjectName("gameCard")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMinimumHeight(110)
+
+        icon_label = QLabel(icon)
+        icon_label.setObjectName("cardIcon")
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_label.setFixedSize(64, 64)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("cardTitle")
+        desc_label = QLabel(description)
+        desc_label.setObjectName("cardDesc")
+        desc_label.setWordWrap(True)
+
+        text = QVBoxLayout()
+        text.setSpacing(2)
+        text.addStretch()
+        text.addWidget(title_label)
+        text.addWidget(desc_label)
+        text.addStretch()
+
+        row = QHBoxLayout()
+        row.setContentsMargins(20, 16, 20, 16)
+        row.setSpacing(18)
+        row.addWidget(icon_label)
+        row.addLayout(text, 1)
+        self.setLayout(row)
+
+        # let clicks pass through the labels to the button underneath
+        for label in (icon_label, title_label, desc_label):
+            label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+
+class GamesPage(QWidget):
+    def __init__(self, user_id, username):
+        super().__init__()
+        self.user_id = user_id
+        self.username = username
+
+        # ----- games menu -----
+        menu = QWidget()
+        title = QLabel("Games")
+        title.setObjectName("title")
+        subtitle = QLabel("Pick a game, beat your best score and climb the leaderboard")
+        subtitle.setObjectName("subtitle")
+
+        trivia_card = GameCard("\U0001F9E0", "Trivia Quiz", "Test your knowledge and climb the leaderboard")
+        trivia_card.clicked.connect(lambda: self.stack.setCurrentIndex(1))
+
+        pokemon_card = GameCard("\u26A1", "Who's That Pok\u00E9mon?", "Guess from the silhouette. You have 3 lives")
+        pokemon_card.clicked.connect(lambda: self.stack.setCurrentIndex(2))
+
+        menu_layout = QVBoxLayout()
+        menu_layout.setContentsMargins(32, 28, 32, 20)
+        menu_layout.setSpacing(12)
+        menu_layout.addWidget(title)
+        menu_layout.addWidget(subtitle)
+        menu_layout.addSpacing(10)
+        menu_layout.addWidget(trivia_card)
+        menu_layout.addWidget(pokemon_card)
+        menu_layout.addStretch()
+        menu.setLayout(menu_layout)
+
+        # ----- the games themselves -----
+        back_to_menu = lambda: self.stack.setCurrentIndex(0)
+        self.trivia = TriviaGame(user_id, username, on_back=back_to_menu)
+        self.pokemon = PokemonGame(user_id, username, on_back=back_to_menu)
+
+        self.stack = QStackedWidget()
+        self.stack.addWidget(menu)           # 0
+        self.stack.addWidget(self.trivia)    # 1
+        self.stack.addWidget(self.pokemon)   # 2
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.stack)
+        self.setLayout(layout)
