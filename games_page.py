@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from trivia_game import TriviaGame
 from pokemon_game import PokemonGame
+from flag_game import FlagGame
 
 
 class GameCard(QPushButton):
@@ -64,6 +65,9 @@ class GamesPage(QWidget):
         pokemon_card = GameCard("\u26A1", "Who's That Pok\u00E9mon?", "Guess from the silhouette. You have 3 lives")
         pokemon_card.clicked.connect(lambda: self.stack.setCurrentIndex(2))
 
+        flag_card = GameCard("\U0001F30D", "Guess the Flag", "Name the country from its flag. You have 3 lives")
+        flag_card.clicked.connect(lambda: self.stack.setCurrentIndex(3))
+
         menu_layout = QVBoxLayout()
         menu_layout.setContentsMargins(32, 28, 32, 20)
         menu_layout.setSpacing(12)
@@ -72,6 +76,7 @@ class GamesPage(QWidget):
         menu_layout.addSpacing(10)
         menu_layout.addWidget(trivia_card)
         menu_layout.addWidget(pokemon_card)
+        menu_layout.addWidget(flag_card)
         menu_layout.addStretch()
         menu.setLayout(menu_layout)
 
@@ -79,11 +84,13 @@ class GamesPage(QWidget):
         back_to_menu = lambda: self.stack.setCurrentIndex(0)
         self.trivia = TriviaGame(user_id, username, on_back=back_to_menu)
         self.pokemon = PokemonGame(user_id, username, on_back=back_to_menu)
+        self.flags = FlagGame(user_id, username, on_back=back_to_menu)
 
         self.stack = QStackedWidget()
         self.stack.addWidget(menu)           # 0
         self.stack.addWidget(self.trivia)    # 1
         self.stack.addWidget(self.pokemon)   # 2
+        self.stack.addWidget(self.flags)     # 3
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
