@@ -72,11 +72,19 @@ class AppWindow(QWidget):
 
         user_card = QFrame()
         user_card.setObjectName("userCard")
-        card_layout = QHBoxLayout()
+
+        # top row: avatar + name
+        user_row = QHBoxLayout()
+        user_row.setSpacing(10)
+        user_row.addWidget(avatar)
+        user_row.addWidget(name_label, 1)
+
+        # the logout button goes on its own row so it has room
+        logout_btn.setMinimumHeight(36)
+        card_layout = QVBoxLayout()
         card_layout.setContentsMargins(10, 10, 10, 10)
-        card_layout.setSpacing(10)
-        card_layout.addWidget(avatar)
-        card_layout.addWidget(name_label, 1)
+        card_layout.setSpacing(8)
+        card_layout.addLayout(user_row)
         card_layout.addWidget(logout_btn)
         user_card.setLayout(card_layout)
         side_layout.addWidget(user_card)
