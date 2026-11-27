@@ -26,13 +26,14 @@ STYLESHEET = f"""
 QWidget {{
     background-color: {BG};
     color: {TEXT};
-    font-family: "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-family: "Inter 18pt", "Inter", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     font-size: 14px;
 }}
 QLabel {{
     background-color: transparent;
 }}
 QLabel#title {{
+    font-family: "Outfit", "Inter 18pt", "Inter", "Segoe UI", sans-serif;
     font-size: 28px;
     font-weight: 700;
 }}
@@ -49,6 +50,7 @@ QLabel#sectionLabel {{
     font-weight: 600;
 }}
 QLabel#nowPlaying {{
+    font-family: "Outfit", "Inter 18pt", "Inter", "Segoe UI", sans-serif;
     font-size: 15px;
     font-weight: 600;
 }}
@@ -57,10 +59,12 @@ QLabel#status {{
     font-size: 13px;
 }}
 QLabel#bigScore {{
+    font-family: "Outfit", "Inter 18pt", "Inter", "Segoe UI", sans-serif;
     font-size: 48px;
     font-weight: 700;
 }}
 QLabel#question {{
+    font-family: "Outfit", "Inter 18pt", "Inter", "Segoe UI", sans-serif;
     font-size: 22px;
     font-weight: 600;
 }}

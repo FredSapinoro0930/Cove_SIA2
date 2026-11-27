@@ -1,9 +1,10 @@
 import sys
+import os
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QFontDatabase
 import db
 from app_window import AppWindow
 from style import STYLESHEET
@@ -97,6 +98,14 @@ class LoginWindow(QWidget):
         ok, msg = db.register_user(username, password)
         self.show_message(msg, ok)
 
+def load_fonts():
+    folder = asset_path("fonts")
+    if not os.path.isdir(folder):
+        return
+    for name in os.listdir(folder):
+        if name.lower().endswith((".ttf", ".otf")):
+            QFontDatabase.addApplicationFont(os.path.join(folder, name))
+
 
 if __name__ == "__main__":
     # makes Windows show our icon in the taskbar instead of the Python icon
@@ -106,6 +115,8 @@ if __name__ == "__main__":
 
     db.init_db()
     app = QApplication(sys.argv)
+    load_fonts()
+    print([f for f in QFontDatabase.families() if "Inter" in f or "Outfit" in f])
     app.setStyleSheet(STYLESHEET)
     app.setWindowIcon(QIcon(asset_path("cove_icon.png")))  # applies to every window
     window = LoginWindow()
