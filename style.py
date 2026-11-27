@@ -23,6 +23,7 @@ GOOD_TEXT = "color: #4ade80;"
 BAD_TEXT = "color: #f87171;"
 
 _chevron = asset_path("chevron_down.svg").replace("\\", "/")
+_check = asset_path("check.svg").replace("\\", "/")
 
 STYLESHEET = f"""
 QWidget {{
@@ -393,5 +394,64 @@ QLabel#cardDesc {{
 QLabel#pokemonPanel {{
     background-color: #e6e9ee;
     border-radius: 24px;
+}}
+
+/* ---------- checkbox ---------- */
+QCheckBox {{
+    background-color: transparent;
+    spacing: 8px;
+    padding: 4px 2px;
+}}
+QCheckBox::indicator {{
+    width: 18px;
+    height: 18px;
+    border: 1px solid {CONTROL_BORDER};
+    border-radius: 5px;
+    background-color: {SURFACE_2};
+}}
+QCheckBox::indicator:checked {{
+    background-color: {ACCENT};
+    border: 1px solid {ACCENT};
+    image: url("{_check}");
+}}
+QCheckBox::indicator:focus {{
+    border: 2px solid {FOCUS};
+}}
+
+/* ---------- tabs ---------- */
+QTabWidget::pane {{
+    border: none;
+    border-top: 1px solid {BORDER};
+}}
+QTabBar::tab {{
+    background-color: transparent;
+    color: {MUTED};
+    border: none;
+    border-bottom: 3px solid transparent;
+    padding: 8px 18px;
+    font-weight: 600;
+}}
+QTabBar::tab:hover {{
+    color: {TEXT};
+}}
+QTabBar::tab:selected {{
+    color: {ACCENT_HOVER};
+    border-bottom: 3px solid {ACCENT};
+}}
+
+/* ---------- menus ---------- */
+QMenu {{
+    background-color: {SURFACE};
+    border: 1px solid {BORDER};
+    padding: 4px;
+}}
+QMenu::item {{
+    padding: 8px 18px;
+}}
+QMenu::item:selected {{
+    background-color: {ACCENT_SOFT};
+}}
+QScrollArea {{
+    border: none;
 }}
 """

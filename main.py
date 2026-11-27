@@ -1,7 +1,8 @@
 import sys
 import os
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QStackedWidget
+    QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QStackedWidget,
+    QCheckBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QFontDatabase
@@ -14,7 +15,7 @@ from widgets import make_logo, keyboard_focus_only
 
 MIN_USERNAME = 3
 MIN_PASSWORD = 8
-LOGIN_SIZE = (380, 500)
+LOGIN_SIZE = (380, 540)
 REGISTER_SIZE = (380, 590)
 
 
@@ -81,6 +82,8 @@ class LoginWindow(QWidget):
 
         self.username_input = self.make_input("Username")
         self.password_input = self.make_input("Password", password=True)
+        self.stay_box = QCheckBox("Stay logged in")
+        self.stay_box.setToolTip(f"Skip this screen on this computer for {db.SESSION_DAYS} days")
         login_btn = self.make_button("Login", primary=True)
         to_register_btn = self.make_button("Create account")
 
@@ -103,6 +106,7 @@ class LoginWindow(QWidget):
         layout.addSpacing(16)
         layout.addWidget(self.username_input)
         layout.addWidget(self.password_input)
+        layout.addWidget(self.stay_box)
         layout.addSpacing(4)
         layout.addWidget(login_btn)
         layout.addWidget(to_register_btn)
@@ -189,6 +193,13 @@ class LoginWindow(QWidget):
             self.show_message(self.login_message, "Wrong username or password")
             return
 
+        if self.stay_box.isChecked():
+            db.remember_login(user_id)
+        else:
+            db.forget_login()
+        self.open_app(user_id, username)
+
+    def open_app(self, user_id, username):
         # on_logout tells the app window which function to call when Logout is clicked
         self.main_window = AppWindow(user_id, username, on_logout=self.return_to_login)
         self.main_window.show()
@@ -196,6 +207,8 @@ class LoginWindow(QWidget):
 
     def return_to_login(self):
         """Called by the app window when the user logs out."""
+        db.forget_login()  # logging out also turns off "Stay logged in"
+        self.stay_box.setChecked(False)
         self.username_input.clear()
         self.show_login()
         self.show_message(self.login_message, "Logged out", ok=True)
@@ -252,5 +265,9 @@ if __name__ == "__main__":
     app.setStyleSheet(STYLESHEET)
     app.setWindowIcon(QIcon(asset_path("cove_icon.png")))  # applies to every window
     window = LoginWindow()
-    window.show()
+    saved_user = db.restore_login()
+    if saved_user:
+        window.open_app(*saved_user)  # "Stay logged in": go straight to the app
+    else:
+        window.show()
     sys.exit(app.exec())

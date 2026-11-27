@@ -1,12 +1,34 @@
-from PySide6.QtWidgets import QSlider, QStyle, QLabel, QFrame, QPushButton
-from PySide6.QtCore import Qt
+import threading
+from PySide6.QtWidgets import QSlider, QStyle, QLabel, QFrame, QPushButton, QListWidgetItem
+from PySide6.QtCore import Qt, QObject, Signal, Slot
 from PySide6.QtGui import QPixmap, QImage, QColor, QRegion
 from resources import asset_path
+
+# short service names shown next to each song
+LABELS = {"jamendo": "Jamendo", "deezer": "Deezer 30s"}
 
 
 def format_time(ms):
     seconds = max(ms, 0) // 1000
     return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+def section_label(text):
+    label = QLabel(text)
+    label.setObjectName("sectionLabel")
+    return label
+
+
+def make_track_item(track):
+    """A list row for a song. The full track info is hidden inside the item."""
+    text = track["title"]
+    if track["artist"]:
+        text += f" - {track['artist']}"
+    if track["duration"]:
+        text += f"  ({format_time(track['duration'] * 1000)})"
+    item = QListWidgetItem(f"{text}  ·  {LABELS.get(track['source'], track['source'])}")
+    item.setData(Qt.ItemDataRole.UserRole, track)
+    return item
 
 
 def _tidy_logo(pixmap, width):
@@ -94,3 +116,55 @@ class ClickableSlider(QSlider):
             event.accept()
         else:
             super().mouseReleaseEvent(event)
+
+
+class BackgroundRunner(QObject):
+    """runner.run(key, work, on_done) calls on_done(result, error) back on the UI thread.
+
+    Starting new work with the same key (or calling cancel) makes the older answer be
+    ignored, so a slow old search can't overwrite a newer one.
+    """
+
+    _finished = Signal(str, int, object, object, object)
+
+    def __init__(self, parent=None, max_threads=6):
+        super().__init__(parent)
+        self._latest = {}  # key -> number of the newest job
+        self._counter = 0
+        self._slots = threading.Semaphore(max_threads)
+        self._finished.connect(self._deliver)
+
+    def run(self, key, work, on_done):
+        self._counter += 1
+        number = self._counter
+        self._latest[key] = number
+
+        def job():
+            result, error = None, None
+            with self._slots:
+                if self._latest.get(key) != number:
+                    return  # cancelled while waiting for a free slot
+                try:
+                    result = work()
+                except Exception as e:
+                    error = str(e) or "Something went wrong."
+            try:
+                self._finished.emit(key, number, on_done, result, error)
+            except RuntimeError:
+                pass  # the window was closed while we were waiting
+
+        threading.Thread(target=job, daemon=True).start()
+
+    def cancel(self, key):
+        """Returns True if there was unfinished work under this key."""
+        return self._latest.pop(key, None) is not None
+
+    def cancel_all(self):
+        self._latest.clear()
+
+    @Slot(str, int, object, object, object)
+    def _deliver(self, key, number, on_done, result, error):
+        if self._latest.get(key) != number:
+            return  # an outdated answer
+        del self._latest[key]
+        on_done(result, error)

@@ -19,6 +19,7 @@ class GameCard(QPushButton):
         title_label = QLabel(title)
         title_label.setObjectName("cardTitle")
         desc_label = QLabel(description)
+        self.desc_label = desc_label
         desc_label.setObjectName("cardDesc")
         desc_label.setWordWrap(True)
 
@@ -37,6 +38,9 @@ class GameCard(QPushButton):
         # let clicks pass through the labels to the button underneath
         for label in (title_label, desc_label):
             label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+    def set_description(self, text):
+        self.desc_label.setText(text)
 
 
 class GamesPage(QWidget):

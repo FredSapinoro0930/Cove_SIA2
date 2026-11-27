@@ -1,31 +1,63 @@
 import random
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QListWidget, QListWidgetItem
+    QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QListWidget, QComboBox, QInputDialog, QMessageBox, QMenu, QTabWidget
 )
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QTimer, Signal, QPoint
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-import jamendo
 import db
-from widgets import ClickableSlider, format_time
+import deezer
+import jamendo
+from widgets import (
+    BackgroundRunner, ClickableSlider, format_time, make_track_item, section_label
+)
+
+SOURCES = {"jamendo": jamendo, "deezer": deezer}
 
 
-class MusicPage(QWidget):
-    def __init__(self, user_id, username):
+def get_fresh_track(source, track_id):
+    """The track with a new stream link, or None if it can't be fetched."""
+    service = SOURCES.get(source)
+    return service.get_track(track_id) if service else None
+
+
+def lookup(refs, cache):
+    """Turn saved (source, track_id) pairs into track details. Run on a background thread.
+
+    `cache` is {(source, id): track}. Returns only the newly fetched entries.
+    """
+    found = {}
+    for name, service in SOURCES.items():
+        missing = [tid for src, tid in refs if src == name and (src, tid) not in cache]
+        if missing:
+            for tid, track in service.get_tracks(missing).items():
+                found[(name, tid)] = track
+    return found
+
+
+class SourceTab(QWidget):
+    play_requested = Signal(object, int)       # (list of tracks, row to play)
+    favorite_requested = Signal(object)        # track
+    playlist_requested = Signal(object, object)  # (track, button to open the menu under)
+    message = Signal(str)
+
+    def __init__(self, runner, service, key, description,
+                 default, default_heading, default_button=None):
         super().__init__()
-        self.user_id = user_id
-        self.username = username
-        self.queue_list = None  # the list the current song was played from
+        self.runner = runner
+        self.service = service
+        self.key = key          # keeps this tab's searches separate from the other tab's
+        self.default = default  # function returning the songs shown without a search
+        self.default_heading = default_heading
+        self.loaded = False
 
-        # ----- audio engine -----
-        self.player = QMediaPlayer()
-        self.audio_output = QAudioOutput()
-        self.player.setAudioOutput(self.audio_output)
-        self.audio_output.setVolume(0.5)
+        note = QLabel(description)
+        note.setObjectName("muted")
+        note.setWordWrap(True)
 
-        # ----- search row -----
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search songs or artists...")
+        self.search_input.setAccessibleName("Search songs or artists")
         self.search_input.setMinimumHeight(42)
         search_btn = QPushButton("Search")
         search_btn.setObjectName("primary")
@@ -34,33 +66,331 @@ class MusicPage(QWidget):
         search_row.setSpacing(10)
         search_row.addWidget(self.search_input, 1)
         search_row.addWidget(search_btn)
+        if default_button:
+            button = QPushButton(default_button)
+            button.setMinimumHeight(42)
+            button.clicked.connect(self.show_default)
+            search_row.addWidget(button)
+
+        self.heading = section_label("SEARCH RESULTS  ·  DOUBLE-CLICK TO PLAY")
+        self.results_list = QListWidget()
+
+        favorite_btn = QPushButton("Add to favorites")
+        self.playlist_btn = QPushButton("Add to playlist")
+        buttons = QHBoxLayout()
+        buttons.addWidget(favorite_btn)
+        buttons.addWidget(self.playlist_btn)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 10, 0, 0)
+        layout.addWidget(note)
+        layout.addLayout(search_row)
+        layout.addWidget(self.heading)
+        layout.addWidget(self.results_list, 1)
+        layout.addLayout(buttons)
+        self.setLayout(layout)
+
+        search_btn.clicked.connect(self.do_search)
+        self.search_input.returnPressed.connect(self.do_search)
+        self.results_list.itemDoubleClicked.connect(
+            lambda item: self.play_requested.emit(self.tracks(), self.results_list.row(item)))
+        favorite_btn.clicked.connect(self._favorite)
+        self.playlist_btn.clicked.connect(self._add_to_playlist)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.loaded:  # first visit: show songs before any search
+            self.show_default()
+
+    def tracks(self):
+        return [self.results_list.item(i).data(Qt.ItemDataRole.UserRole)
+                for i in range(self.results_list.count())]
+
+    def selected_track(self):
+        item = self.results_list.currentItem()
+        if item is None:
+            self.message.emit("Select a song from the results first")
+            return None
+        return item.data(Qt.ItemDataRole.UserRole)
+
+    def _favorite(self):
+        track = self.selected_track()
+        if track:
+            self.favorite_requested.emit(track)
+
+    def _add_to_playlist(self):
+        track = self.selected_track()
+        if track:
+            self.playlist_requested.emit(track, self.playlist_btn)
+
+    def show_default(self):
+        self.loaded = True
+        self._load(self.default, self.default_heading)
+
+    def do_search(self):
+        query = self.search_input.text().strip()
+        if not query:
+            self.show_default()  # empty search box
+            return
+        self.loaded = True
+        self._load(lambda: self.service.search_tracks(query),
+                   "SEARCH RESULTS  ·  DOUBLE-CLICK TO PLAY")
+
+    def _load(self, work, heading):
+        self.message.emit("Loading...")
+
+        def done(tracks, error):
+            if error:
+                self.loaded = False  # try again on the next visit
+                self.message.emit(error)
+                return
+            self.heading.setText(heading)
+            self.results_list.clear()
+            for track in tracks:
+                self.results_list.addItem(make_track_item(track))
+            self.message.emit(f"{len(tracks)} songs" if tracks else "No results found")
+
+        self.runner.run(self.key, work, done)
+
+
+FAVORITES = 0  # combo value for Favorites (real playlist ids start at 1)
+
+
+class LibraryPanel(QWidget):
+    play_requested = Signal(object, int)
+    message = Signal(str)
+
+    def __init__(self, runner, user_id):
+        super().__init__()
+        self.runner = runner
+        self.user_id = user_id
+        self.cache = {}  # (source, id) -> track details, kept only while the app is open
+        self.loaded = False
+
+        self.view_box = QComboBox()
+        self.view_box.setAccessibleName("Favorites or playlist")
+        self.view_box.setMinimumHeight(42)
+        new_btn = QPushButton("New playlist")
+        new_btn.setMinimumHeight(42)
+        self.delete_btn = QPushButton("Delete")
+        self.delete_btn.setMinimumHeight(42)
+        top = QHBoxLayout()
+        top.addWidget(self.view_box, 1)
+        top.addWidget(new_btn)
+        top.addWidget(self.delete_btn)
+
+        self.track_list = QListWidget()
+        remove_btn = QPushButton("Remove song")
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(section_label("MY LIBRARY"))
+        layout.addLayout(top)
+        layout.addWidget(self.track_list, 1)
+        layout.addWidget(remove_btn)
+        self.setLayout(layout)
+
+        new_btn.clicked.connect(lambda: self.new_playlist())
+        self.delete_btn.clicked.connect(self.delete_playlist)
+        remove_btn.clicked.connect(self.remove_selected)
+        self.track_list.itemDoubleClicked.connect(
+            lambda item: self.play_requested.emit(self.tracks(), self.track_list.row(item)))
+
+        self.reload_views(FAVORITES)
+        self.view_box.currentIndexChanged.connect(lambda _: self.refresh())
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.loaded:
+            self.loaded = True
+            self.refresh()
+
+    def tracks(self):
+        return [self.track_list.item(i).data(Qt.ItemDataRole.UserRole)
+                for i in range(self.track_list.count())]
+
+    def current_view(self):
+        value = self.view_box.currentData()
+        return FAVORITES if value is None else value
+
+    def reload_views(self, select):
+        self.view_box.blockSignals(True)
+        self.view_box.clear()
+        self.view_box.addItem("Favorites", FAVORITES)
+        for playlist_id, name in db.get_playlists(self.user_id):
+            self.view_box.addItem(name, playlist_id)
+        self.view_box.setCurrentIndex(max(self.view_box.findData(select), 0))
+        self.view_box.blockSignals(False)
+
+    # ---------- showing songs ----------
+    def refs(self):
+        view = self.current_view()
+        if view == FAVORITES:
+            return db.get_favorites(self.user_id)
+        return db.get_playlist_tracks(self.user_id, view)
+
+    def refresh(self):
+        self.delete_btn.setEnabled(self.current_view() != FAVORITES)
+        refs = self.refs()
+        self._fill(refs, loading=True)
+        if all(tuple(ref) in self.cache for ref in refs):
+            self.runner.cancel("library")
+            return
+
+        # the database only holds source + track ID, so ask each service for the details
+        cache = dict(self.cache)
+
+        def done(found, error):
+            if found:
+                self.cache.update(found)
+            self._fill(self.refs(), loading=False)
+            if error:
+                self.message.emit(error)
+
+        self.runner.run("library", lambda: lookup(refs, cache), done)
+
+    def _fill(self, refs, loading):
+        row = self.track_list.currentRow()
+        self.track_list.clear()
+        for source, track_id in refs:
+            track = self.cache.get((source, track_id))
+            if track is None:
+                # a placeholder can still be played (retried) or removed
+                title = "Loading..." if loading else "Unavailable right now"
+                track = {"source": source, "id": track_id, "title": title,
+                         "artist": "", "duration": 0, "stream_url": ""}
+            item = make_track_item(track)
+            # saved songs always get a new stream link before playing
+            item.setData(Qt.ItemDataRole.UserRole, {**track, "stream_url": ""})
+            self.track_list.addItem(item)
+        if 0 <= row < self.track_list.count():
+            self.track_list.setCurrentRow(row)
+
+    # ---------- changing the library ----------
+    def add_favorite(self, track):
+        self.cache[(track["source"], track["id"])] = track
+        if db.add_favorite(self.user_id, track["source"], track["id"]):
+            self.message.emit(f"Added to favorites: {track['title']}")
+            if self.current_view() == FAVORITES:
+                self.refresh()
+        else:
+            self.message.emit("That song is already in your favorites")
+
+    def choose_playlist(self, track, button):
+        """Opens a menu under `button` listing the playlists."""
+        menu = QMenu(self)
+        actions = {}
+        for playlist_id, name in db.get_playlists(self.user_id):
+            action = menu.addAction(name.replace("&", "&&"))  # show & as typed
+            actions[action] = (playlist_id, name)
+        if actions:
+            menu.addSeparator()
+        create = menu.addAction("New playlist...")
+        chosen = menu.exec(button.mapToGlobal(QPoint(0, button.height())))
+        if chosen is None:
+            return
+        if chosen == create:
+            created = self.new_playlist()
+            if created is None:
+                return
+            playlist_id, name = created
+        else:
+            playlist_id, name = actions[chosen]
+
+        self.cache[(track["source"], track["id"])] = track
+        if db.add_to_playlist(self.user_id, playlist_id, track["source"], track["id"]):
+            self.message.emit(f"Added to {name}: {track['title']}")
+            if self.current_view() == playlist_id:
+                self.refresh()
+        else:
+            self.message.emit(f"That song is already in {name}")
+
+    def new_playlist(self):
+        """Asks for a name. Returns (id, name), or None."""
+        name, ok = QInputDialog.getText(self, "New playlist", "Playlist name:")
+        name = name.strip()
+        if not ok or not name:
+            return None
+        playlist_id = db.create_playlist(self.user_id, name)
+        if playlist_id is None:
+            self.message.emit("You already have a playlist with that name")
+            return None
+        self.reload_views(playlist_id)
+        self.refresh()
+        return playlist_id, name
+
+    def delete_playlist(self):
+        view = self.current_view()
+        if view == FAVORITES:
+            return
+        answer = QMessageBox.question(
+            self, "Delete playlist", f'Delete the playlist "{self.view_box.currentText()}"?')
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        db.delete_playlist(self.user_id, view)
+        self.reload_views(FAVORITES)
+        self.refresh()
+        self.message.emit("Playlist deleted")
+
+    def remove_selected(self):
+        item = self.track_list.currentItem()
+        if item is None:
+            self.message.emit("Select a song from your library first")
+            return
+        track = item.data(Qt.ItemDataRole.UserRole)
+        view = self.current_view()
+        if view == FAVORITES:
+            db.remove_favorite(self.user_id, track["source"], track["id"])
+        else:
+            db.remove_from_playlist(self.user_id, view, track["source"], track["id"])
+        self.refresh()
+        self.message.emit("Removed")
+
+
+class MusicPage(QWidget):
+    def __init__(self, user_id, username):
+        super().__init__()
+        self.user_id = user_id
+        self.username = username
+        self.queue = []       # the songs that were listed when playback started
+        self.queue_index = -1
+        self.runner = BackgroundRunner(self)
+
+        # ----- audio engine -----
+        self.player = QMediaPlayer()
+        self.audio_output = QAudioOutput()
+        self.player.setAudioOutput(self.audio_output)
+        self.audio_output.setVolume(0.5)
 
         # ----- page header -----
         title = QLabel("Music")
         title.setObjectName("title")
-        subtitle = QLabel("Search free music from Jamendo and build your own playlist")
+        subtitle = QLabel("Full free songs from Jamendo, popular hits as previews from Deezer")
         subtitle.setObjectName("subtitle")
 
-        # ----- left: search results -----
-        self.results_list = QListWidget()
-        add_btn = QPushButton("Add to playlist")
-        left = QVBoxLayout()
-        left.addWidget(self.section_label("SEARCH RESULTS"))
-        left.addWidget(self.results_list)
-        left.addWidget(add_btn)
+        # ----- left: one tab per service -----
+        self.jamendo_tab = SourceTab(
+            self.runner, jamendo, "jamendo",
+            "Full-length free tracks. Search with an empty box for a new random mix.",
+            default=jamendo.random_tracks,
+            default_heading="RANDOM PICKS  ·  DOUBLE-CLICK TO PLAY")
+        self.deezer_tab = SourceTab(
+            self.runner, deezer, "deezer",
+            "Popular charts and search. Deezer provides 30-second previews only.",
+            default=deezer.chart_tracks,
+            default_heading="POPULAR RIGHT NOW  ·  DOUBLE-CLICK TO PLAY",
+            default_button="Popular")
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.jamendo_tab, "Jamendo")
+        self.tabs.addTab(self.deezer_tab, "Deezer")
 
-        # ----- right: my playlist -----
-        self.playlist_list = QListWidget()
-        remove_btn = QPushButton("Remove from playlist")
-        right = QVBoxLayout()
-        right.addWidget(self.section_label("MY PLAYLIST"))
-        right.addWidget(self.playlist_list)
-        right.addWidget(remove_btn)
+        # ----- right: favorites and playlists -----
+        self.library = LibraryPanel(self.runner, user_id)
 
         lists_row = QHBoxLayout()
         lists_row.setSpacing(20)
-        lists_row.addLayout(left)
-        lists_row.addLayout(right)
+        lists_row.addWidget(self.tabs, 1)
+        lists_row.addWidget(self.library, 1)
 
         # ----- now playing -----
         self.now_playing = QLabel("Nothing playing")
@@ -124,28 +454,23 @@ class MusicPage(QWidget):
         layout.setSpacing(12)
         layout.addWidget(title)
         layout.addWidget(subtitle)
-        layout.addSpacing(6)
-        layout.addLayout(search_row)
         layout.addLayout(lists_row, 1)
         layout.addWidget(player_bar)
         layout.addWidget(self.status)
         self.setLayout(layout)
 
         # ----- connect signals to functions -----
-        search_btn.clicked.connect(self.do_search)
-        self.search_input.returnPressed.connect(self.do_search)
-        add_btn.clicked.connect(self.add_to_playlist)
-        remove_btn.clicked.connect(self.remove_from_playlist)
-        self.results_list.itemDoubleClicked.connect(
-            lambda item: self.play_row(self.results_list, self.results_list.row(item))
-        )
-        self.playlist_list.itemDoubleClicked.connect(
-            lambda item: self.play_row(self.playlist_list, self.playlist_list.row(item))
-        )
+        for tab in (self.jamendo_tab, self.deezer_tab):
+            tab.play_requested.connect(self.play_from)
+            tab.favorite_requested.connect(self.library.add_favorite)
+            tab.playlist_requested.connect(self.library.choose_playlist)
+            tab.message.connect(self.status.setText)
+        self.library.play_requested.connect(self.play_from)
+        self.library.message.connect(self.status.setText)
         prev_btn.clicked.connect(self.play_previous)
         next_btn.clicked.connect(self.play_next)
         self.play_btn.clicked.connect(self.toggle_play)
-        stop_btn.clicked.connect(self.player.stop)
+        stop_btn.clicked.connect(self.stop)
         self.volume_slider.valueChanged.connect(self.set_volume)
         self.seek_slider.sliderMoved.connect(self.player.setPosition)
         self.player.positionChanged.connect(self.on_position_changed)
@@ -154,134 +479,99 @@ class MusicPage(QWidget):
         self.player.mediaStatusChanged.connect(self.on_media_status)
         self.player.errorOccurred.connect(self.on_player_error)
 
-        # load this user's saved playlist
-        self.refresh_playlist()
 
     # ---------- called by the main window ----------
     def stop(self):
+        self._cancel_loading()  # a song still loading must not start after Stop or Log out
         self.player.stop()
+
     def pause(self):
+        self._cancel_loading()
         self.player.pause()
 
-    # ---------- list helpers ----------
-    @staticmethod
-    def section_label(text):
-        label = QLabel(text)
-        label.setObjectName("sectionLabel")
-        return label
-
-    def make_item(self, track):
-        text = f"{track['title']} - {track['artist']}  ({format_time(track['duration'] * 1000)})"
-        item = QListWidgetItem(text)
-        item.setData(Qt.ItemDataRole.UserRole, track)  # hide the full track info in the item
-        return item
-
-    def refresh_playlist(self):
-        self.playlist_list.clear()
-        for track in db.get_playlist(self.user_id):
-            self.playlist_list.addItem(self.make_item(track))
-
-    # ---------- search ----------
-    def do_search(self):
-        query = self.search_input.text().strip()
-        if not query:
-            return
-        self.status.setText("Searching...")
-        QApplication.processEvents()  # lets the label update before the request runs
-        try:
-            tracks = jamendo.search_tracks(query)
-        except Exception as e:
-            self.status.setText(str(e))
-            return
-
-        self.results_list.clear()
-        for t in tracks:
-            self.results_list.addItem(self.make_item(t))
-        self.status.setText(f"{len(tracks)} results" if tracks else "No results found")
-
-    # ---------- playlist ----------
-    def add_to_playlist(self):
-        item = self.results_list.currentItem()
-        if item is None:
-            self.status.setText("Select a song from the search results first")
-            return
-        track = item.data(Qt.ItemDataRole.UserRole)
-        if db.add_to_playlist(self.user_id, track):
-            self.refresh_playlist()
-            self.status.setText(f"Added: {track['title']}")
-        else:
-            self.status.setText("That song is already in your playlist")
-
-    def remove_from_playlist(self):
-        item = self.playlist_list.currentItem()
-        if item is None:
-            self.status.setText("Select a song from your playlist first")
-            return
-        track = item.data(Qt.ItemDataRole.UserRole)
-        db.remove_from_playlist(self.user_id, track["id"])
-        self.refresh_playlist()
-        self.status.setText(f"Removed: {track['title']}")
+    def _cancel_loading(self):
+        if self.runner.cancel("play"):
+            self.now_playing.setText("Nothing playing")
 
     # ---------- playback ----------
-    def play_row(self, list_widget, row):
-        item = list_widget.item(row)
-        if item is None:
+    def play_from(self, tracks, row):
+        self.queue = list(tracks)
+        self.play_index(row)
+
+    def play_index(self, index):
+        if not 0 <= index < len(self.queue):
             return
-        self.queue_list = list_widget
-        list_widget.setCurrentRow(row)
-        track = item.data(Qt.ItemDataRole.UserRole)
+        self.queue_index = index
+        track = self.queue[index]
+        self.runner.cancel("play")
+        self.player.stop()
+        self.player.setSource(QUrl())
 
-        url = track["stream_url"]
-        if list_widget is self.playlist_list:
-            # saved links may expire, so ask Jamendo for a fresh one (falls back to the saved one)
-            fresh = jamendo.get_track(track["id"])
+        # Deezer links expire, and saved songs have no link, so fetch a new one
+        if track["source"] != "deezer" and track["stream_url"]:
+            self._start(track)
+            return
+
+        self.now_playing.setText("Loading...")
+
+        def done(fresh, error):
             if fresh:
-                url = fresh["stream_url"]
+                self._start(fresh)
+            else:
+                self.now_playing.setText("Nothing playing")
+                self.status.setText(error or "That song can't be played right now. Try again.")
 
-        self.player.setSource(QUrl(url))
+        self.runner.run(
+            "play", lambda: get_fresh_track(track["source"], track["id"]), done)
+
+    def _start(self, track):
+        self.player.setSource(QUrl(track["stream_url"]))
         self.player.play()
-        self.now_playing.setText(f"{track['title']} - {track['artist']}")
+        preview = "  (30s preview, Deezer)" if track["source"] == "deezer" else ""
+        self.now_playing.setText(f"{track['title']} - {track['artist']}{preview}")
 
     def play_next(self):
-        lst = self.queue_list
-        if lst is None or lst.count() == 0:
+        if not self.queue:
             return
-        row = lst.currentRow()
-        if self.shuffle_btn.isChecked() and lst.count() > 1:
-            new_row = random.choice([r for r in range(lst.count()) if r != row])
+        row = self.queue_index
+        if self.shuffle_btn.isChecked() and len(self.queue) > 1:
+            new_row = random.choice([r for r in range(len(self.queue)) if r != row])
         else:
             new_row = row + 1
-            if new_row >= lst.count():
+            if new_row >= len(self.queue):
                 if self.repeat_btn.isChecked():
                     new_row = 0  # wrap around
                 else:
                     self.player.stop()  # end of the list
                     return
-        self.play_row(lst, new_row)
+        self.play_index(new_row)
 
     def play_previous(self):
-        lst = self.queue_list
-        if lst is None or lst.count() == 0:
+        if not self.queue:
             return
         if self.player.position() > 3000:
             self.player.setPosition(0)  # more than 3 seconds in: restart the song
             return
-        new_row = lst.currentRow() - 1
+        new_row = self.queue_index - 1
         if new_row < 0:
-            new_row = lst.count() - 1 if self.repeat_btn.isChecked() else 0
-        self.play_row(lst, new_row)
+            new_row = len(self.queue) - 1 if self.repeat_btn.isChecked() else 0
+        self.play_index(new_row)
 
     def toggle_play(self):
         state = self.player.playbackState()
         if state == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
-        elif self.player.source().isEmpty():
-            for lst in (self.results_list, self.playlist_list):
-                if lst.currentRow() >= 0:
-                    self.play_row(lst, lst.currentRow())
-                    break
-        else:
+        elif not self.player.source().isEmpty():
             self.player.play()
+        elif self.queue:
+            self.play_index(self.queue_index)
+        else:
+            for lst in (self.tabs.currentWidget().results_list, self.library.track_list):
+                if lst.currentRow() >= 0:
+                    tracks = [lst.item(i).data(Qt.ItemDataRole.UserRole)
+                              for i in range(lst.count())]
+                    self.play_from(tracks, lst.currentRow())
+                    break
 
     def set_volume(self, value):
         self.audio_output.setVolume(value / 100)
@@ -302,7 +592,7 @@ class MusicPage(QWidget):
 
     def on_media_status(self, status):
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            self.play_next()  # song finished: auto-advance
+            QTimer.singleShot(0, self.play_next)  # song finished: auto-advance
 
     def on_player_error(self, error, message):
         self.status.setText(f"Playback error: {message}")

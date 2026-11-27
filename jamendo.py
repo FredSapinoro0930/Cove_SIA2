@@ -1,7 +1,9 @@
+import random
 import requests
 
 CLIENT_ID = "a18eaf22"
 BASE_URL = "https://api.jamendo.com/v3.0"
+RANDOM_POOL = 500  # random picks come from about this many of the most popular songs
 
 
 def _to_seconds(value):
@@ -37,7 +39,8 @@ def _request_tracks(extra_params):
         if not item.get("audio"):
             continue  # skip tracks with no stream URL
         tracks.append({
-            "id": item.get("id"),
+            "source": "jamendo",
+            "id": str(item.get("id")),
             "title": item.get("name", "Unknown"),
             "artist": item.get("artist_name", "Unknown"),
             "album": item.get("album_name", ""),
@@ -49,6 +52,36 @@ def _request_tracks(extra_params):
 
 def search_tracks(query, limit=20):
     return _request_tracks({"search": query, "limit": limit})
+
+
+def random_tracks(limit=20):
+    """A different set of popular songs each time (Jamendo has no "random" sort)."""
+    params = {"order": "popularity_total", "limit": limit}
+    offset = random.randrange(0, RANDOM_POOL, limit)
+    tracks = _request_tracks({**params, "offset": offset})
+    if not tracks:
+        tracks = _request_tracks(params)  # fall back to the top of the list
+    random.shuffle(tracks)
+    return tracks
+
+
+def get_tracks(track_ids):
+    """Look up many tracks in as few requests as possible. Returns {id: track}."""
+    ids = [str(i) for i in track_ids]
+    found = {}
+    for start in range(0, len(ids), 50):
+        batch = ids[start:start + 50]
+        try:
+            for track in _request_tracks({"id[]": batch, "limit": len(batch)}):
+                found[track["id"]] = track
+        except Exception:
+            pass  # anything missed is tried one at a time below
+    for track_id in ids:
+        if track_id not in found:
+            track = get_track(track_id)
+            if track:
+                found[track_id] = track
+    return found
 
 
 def get_track(track_id):
