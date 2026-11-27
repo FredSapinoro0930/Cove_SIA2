@@ -4,10 +4,12 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
-from widgets import make_logo
+from widgets import make_logo, keyboard_focus_only
 from music_page import MusicPage
 from movies_page import MoviesPage
 from games_page import GamesPage
+
+TOPBAR_HEIGHT = 64
 
 
 class AppWindow(QWidget):
@@ -31,35 +33,33 @@ class AppWindow(QWidget):
         self.pages.addWidget(self.movies_page)  # index 1
         self.pages.addWidget(self.games_page)   # index 2
 
-        # ----- sidebar -----
-        sidebar = QFrame()
-        sidebar.setObjectName("sidebar")  # style.py styles it by this name
-        sidebar.setFixedWidth(230)
+        # ----- top navigation bar -----
+        topbar = QFrame()
+        topbar.setObjectName("topbar")  # style.py styles it by this name
+        topbar.setFixedHeight(TOPBAR_HEIGHT)
 
-        logo = make_logo(170)
-
-        side_layout = QVBoxLayout()
-        side_layout.setContentsMargins(16, 24, 16, 16)
-        side_layout.setSpacing(4)
-        side_layout.addWidget(logo)
-        side_layout.addSpacing(24)
+        logo = make_logo(100)
+        logo.setAccessibleName("Cove")
 
         # nav buttons: only one can be selected at a time
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
+        nav_row = QHBoxLayout()
+        nav_row.setSpacing(4)
         for index, label in enumerate(["Music", "Movies && TV", "Games"]):  # && shows as one &
             btn = QPushButton(label)
             btn.setObjectName("navButton")
             btn.setCheckable(True)
+            btn.setFixedHeight(TOPBAR_HEIGHT - 2)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setAccessibleName(label.replace("&&", "and") + " page")
             self.nav_group.addButton(btn, index)  # the id is the page index
-            side_layout.addWidget(btn)
+            nav_row.addWidget(btn)
         self.nav_group.button(0).setChecked(True)
         self.nav_group.idClicked.connect(self.pages.setCurrentIndex)
         self.pages.currentChanged.connect(self.on_page_changed)
 
-        side_layout.addStretch()
-
-        # user card: round avatar with the first letter, name, and a logout button
+        # account: round avatar with the first letter, name, and a logout button
         avatar = QLabel(username[:1].upper() or "?")
         avatar.setObjectName("avatar")
         avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -68,35 +68,43 @@ class AppWindow(QWidget):
         name_label.setObjectName("userName")
         logout_btn = QPushButton("Log out")
         logout_btn.setObjectName("ghost")
+        logout_btn.setMinimumHeight(36)
+        logout_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        logout_btn.setAccessibleName("Log out")
         logout_btn.clicked.connect(self.handle_logout)
 
         user_card = QFrame()
         user_card.setObjectName("userCard")
-
-        # top row: avatar + name
         user_row = QHBoxLayout()
+        user_row.setContentsMargins(0, 0, 0, 0)
         user_row.setSpacing(10)
         user_row.addWidget(avatar)
-        user_row.addWidget(name_label, 1)
+        user_row.addWidget(name_label)
+        user_row.addSpacing(6)
+        user_row.addWidget(logout_btn)
+        user_card.setLayout(user_row)
 
-        # the logout button goes on its own row so it has room
-        logout_btn.setMinimumHeight(36)
-        card_layout = QVBoxLayout()
-        card_layout.setContentsMargins(10, 10, 10, 10)
-        card_layout.setSpacing(8)
-        card_layout.addLayout(user_row)
-        card_layout.addWidget(logout_btn)
-        user_card.setLayout(card_layout)
-        side_layout.addWidget(user_card)
-        sidebar.setLayout(side_layout)
+        bar_layout = QHBoxLayout()
+        bar_layout.setContentsMargins(24, 0, 24, 0)
+        bar_layout.setSpacing(28)
+        bar_layout.addWidget(logo)
+        bar_layout.addLayout(nav_row)
+        bar_layout.addStretch()
+        bar_layout.addWidget(user_card)
+        topbar.setLayout(bar_layout)
 
-        # ----- sidebar on the left, pages on the right -----
-        layout = QHBoxLayout()
+        # ----- nav bar on top, pages underneath -----
+        layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(sidebar)
-        layout.addWidget(self.pages)
+        layout.addWidget(topbar)
+        layout.addWidget(self.pages, 1)
         self.setLayout(layout)
+
+        keyboard_focus_only(self)  # focus ring appears for Tab, not for mouse clicks
+        # start with no button focused, so no focus ring shows until the user presses Tab
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.setFocus()
 
     def on_page_changed(self, index):
         if index == 1:

@@ -8,18 +8,13 @@ from flag_game import FlagGame
 
 
 class GameCard(QPushButton):
-    """A big clickable card: icon on the left, title and description on the right."""
+    """A big clickable card with a title and a short description."""
 
-    def __init__(self, icon, title, description):
+    def __init__(self, title, description):
         super().__init__()
         self.setObjectName("gameCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setMinimumHeight(110)
-
-        icon_label = QLabel(icon)
-        icon_label.setObjectName("cardIcon")
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_label.setFixedSize(64, 64)
 
         title_label = QLabel(title)
         title_label.setObjectName("cardTitle")
@@ -35,14 +30,12 @@ class GameCard(QPushButton):
         text.addStretch()
 
         row = QHBoxLayout()
-        row.setContentsMargins(20, 16, 20, 16)
-        row.setSpacing(18)
-        row.addWidget(icon_label)
+        row.setContentsMargins(24, 16, 24, 16)
         row.addLayout(text, 1)
         self.setLayout(row)
 
         # let clicks pass through the labels to the button underneath
-        for label in (icon_label, title_label, desc_label):
+        for label in (title_label, desc_label):
             label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
 
@@ -59,13 +52,13 @@ class GamesPage(QWidget):
         subtitle = QLabel("Pick a game, beat your best score and climb the leaderboard")
         subtitle.setObjectName("subtitle")
 
-        trivia_card = GameCard("\U0001F9E0", "Trivia Quiz", "Test your knowledge and climb the leaderboard")
+        trivia_card = GameCard("Trivia Quiz", "Test your knowledge and climb the leaderboard")
         trivia_card.clicked.connect(lambda: self.stack.setCurrentIndex(1))
 
-        pokemon_card = GameCard("\u26A1", "Who's That Pok\u00E9mon?", "Guess from the silhouette. You have 3 lives")
+        pokemon_card = GameCard("Who's That Pok\u00E9mon?", "Guess from the silhouette. You have 3 lives")
         pokemon_card.clicked.connect(lambda: self.stack.setCurrentIndex(2))
 
-        flag_card = GameCard("\U0001F30D", "Guess the Flag", "Name the country from its flag. You have 3 lives")
+        flag_card = GameCard("Guess the Flag", "Name the country from its flag. You have 3 lives")
         flag_card.clicked.connect(lambda: self.stack.setCurrentIndex(3))
 
         menu_layout = QVBoxLayout()

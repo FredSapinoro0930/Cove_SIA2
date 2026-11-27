@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QSlider, QStyle, QLabel, QFrame
+from PySide6.QtWidgets import QSlider, QStyle, QLabel, QFrame, QPushButton
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QImage, QColor, QRegion
 from resources import asset_path
@@ -41,10 +41,19 @@ def make_logo(width, font_size=26):
     pixmap = QPixmap(asset_path("cove_wordmark.png"))
     if pixmap.isNull():
         logo.setText("Cove")
-        logo.setStyleSheet(f"font-size: {font_size}px; font-weight: 800; color: #f56e5c;")
+        logo.setStyleSheet(f"font-family: Outfit; font-size: {font_size}px; font-weight: 800; color: #f56e5c;")
         return logo
     logo.setPixmap(_tidy_logo(pixmap, width))
     return logo
+
+
+def keyboard_focus_only(root):
+    """Buttons show their focus ring only when reached with Tab, not after a mouse click.
+
+    Call it once on a window after all its pages are built.
+    """
+    for button in root.findChildren(QPushButton):
+        button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
 
 
 def make_card():

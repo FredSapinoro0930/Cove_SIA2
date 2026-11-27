@@ -3,6 +3,7 @@ from PySide6.QtWidgets import (
     QPushButton, QListWidget, QListWidgetItem, QComboBox
 )
 from PySide6.QtCore import Qt, QUrl, QTimer
+from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 import archive
@@ -34,6 +35,9 @@ class VideoWidget(QVideoWidget):
         event.accept()
 
 class MoviesPage(QWidget):
+    NORMAL_MARGINS = (32, 28, 32, 20)
+    THEATER_MARGINS = (16, 12, 16, 12)
+
     def __init__(self, user_id, username):
         super().__init__()
         self.user_id = user_id
@@ -76,13 +80,13 @@ class MoviesPage(QWidget):
         left.addWidget(self.results_list, 3)
         left.addWidget(self.section_label("EPISODES / PARTS  ·  DOUBLE-CLICK TO PLAY"))
         left.addWidget(self.episodes_list, 2)
-        left_panel = QWidget()
-        left_panel.setFixedWidth(340)
-        left_panel.setLayout(left)
+        self.left_panel = QWidget()  # hidden in theater mode
+        self.left_panel.setFixedWidth(340)
+        self.left_panel.setLayout(left)
 
         middle = QHBoxLayout()
         middle.setSpacing(20)
-        middle.addWidget(left_panel)
+        middle.addWidget(self.left_panel)
         middle.addWidget(self.video_widget, 1)
 
         # ----- now playing -----
@@ -104,6 +108,8 @@ class MoviesPage(QWidget):
         self.play_btn.setObjectName("primary")  # coral pill
         self.play_btn.setMinimumWidth(92)
         stop_btn = QPushButton("Stop")
+        self.theater_btn = QPushButton("Theater")
+        self.theater_btn.setToolTip("Hide the search panel and enlarge the video (T)")
         fullscreen_btn = QPushButton("Fullscreen")
         self.volume_slider = ClickableSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0, 100)
@@ -113,6 +119,7 @@ class MoviesPage(QWidget):
         controls_row.setSpacing(6)
         controls_row.addWidget(self.play_btn)
         controls_row.addWidget(stop_btn)
+        controls_row.addWidget(self.theater_btn)
         controls_row.addWidget(fullscreen_btn)
         controls_row.addStretch()
         controls_row.addWidget(QLabel("Volume"))
@@ -139,18 +146,33 @@ class MoviesPage(QWidget):
         subtitle = QLabel("Free public-domain films and classic shows from the Internet Archive")
         subtitle.setObjectName("subtitle")
 
+        # ----- header + search live in one box so theater mode can hide them together -----
+        self.header_box = QWidget()
+        header_layout = QVBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(12)
+        header_layout.addWidget(title)
+        header_layout.addWidget(subtitle)
+        header_layout.addSpacing(6)
+        header_layout.addLayout(search_row)
+        self.header_box.setLayout(header_layout)
+
         # ----- put everything together -----
-        layout = QVBoxLayout()
-        layout.setContentsMargins(32, 28, 32, 20)
-        layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
-        layout.addSpacing(6)
-        layout.addLayout(search_row)
-        layout.addLayout(middle, 1)
-        layout.addWidget(player_bar)
-        layout.addWidget(self.status)
-        self.setLayout(layout)
+        self.theater = False
+        self.page_layout = QVBoxLayout()
+        self.page_layout.setContentsMargins(*self.NORMAL_MARGINS)
+        self.page_layout.setSpacing(12)
+        self.page_layout.addWidget(self.header_box)
+        self.page_layout.addLayout(middle, 1)
+        self.page_layout.addWidget(player_bar)
+        self.page_layout.addWidget(self.status)
+        self.setLayout(self.page_layout)
+
+        # T toggles theater mode, Esc leaves it (Esc only works while theater mode is on)
+        QShortcut(QKeySequence(Qt.Key.Key_T), self, activated=self.toggle_theater)
+        self.exit_theater_key = QShortcut(QKeySequence(Qt.Key.Key_Escape), self,
+                                          activated=lambda: self.set_theater(False))
+        self.exit_theater_key.setEnabled(False)
 
         # ----- connect signals to functions -----
         search_btn.clicked.connect(self.do_search)
@@ -159,6 +181,7 @@ class MoviesPage(QWidget):
         self.episodes_list.itemDoubleClicked.connect(self.play_episode)
         self.play_btn.clicked.connect(self.toggle_play)
         stop_btn.clicked.connect(self.player.stop)
+        self.theater_btn.clicked.connect(self.toggle_theater)
         fullscreen_btn.clicked.connect(self.video_widget.enter_fullscreen)  # Esc or double-click exits
         self.volume_slider.valueChanged.connect(self.set_volume)
         self.seek_slider.sliderMoved.connect(self.player.setPosition)
@@ -173,6 +196,19 @@ class MoviesPage(QWidget):
         label = QLabel(text)
         label.setObjectName("sectionLabel")
         return label
+
+    # ---------- theater mode ----------
+    def toggle_theater(self):
+        self.set_theater(not self.theater)
+
+    def set_theater(self, on):
+        """Theater mode: the video takes the whole page. The nav bar and player controls stay."""
+        self.theater = on
+        self.header_box.setVisible(not on)
+        self.left_panel.setVisible(not on)
+        self.page_layout.setContentsMargins(*(self.THEATER_MARGINS if on else self.NORMAL_MARGINS))
+        self.theater_btn.setText("Exit theater" if on else "Theater")
+        self.exit_theater_key.setEnabled(on)
 
     # ---------- called by the app window ----------
     def stop(self):

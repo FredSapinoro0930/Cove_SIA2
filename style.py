@@ -2,10 +2,12 @@ from resources import asset_path
 
 # ---------- Cove palette (dark theme) ----------
 BG = "#0f1216"          # main background
-SIDEBAR = "#0b0e12"     # sidebar, a bit darker than the main area
+SIDEBAR = "#0b0e12"     # top nav bar, a bit darker than the main area
 SURFACE = "#171c23"     # cards, lists, player bar
 SURFACE_2 = "#1f262f"   # inputs, buttons, hover
-BORDER = "#2a323d"
+BORDER = "#2a323d"          # decorative borders (cards, dividers)
+CONTROL_BORDER = "#6b7686"  # borders of inputs, buttons and sliders: 3:1+ on every surface (WCAG 1.4.11)
+FOCUS = "#ffffff"           # keyboard focus ring
 TEXT = "#e9edf1"
 MUTED = "#8b95a3"
 ACCENT = "#f56e5c"      # coral (from the logo)
@@ -15,8 +17,8 @@ ACCENT_SOFT = "rgba(245, 110, 92, 0.16)"
 TEAL = "#3cc3d6"
 
 # used by the quiz / pokemon answer buttons (set inline when you answer)
-CORRECT_STYLE = "background-color: #1f9d61; border: 1px solid #1f9d61; color: #ffffff;"
-WRONG_STYLE = "background-color: #d6453d; border: 1px solid #d6453d; color: #ffffff;"
+CORRECT_STYLE = "background-color: #17844f; border: 1px solid #17844f; color: #ffffff;"  # white text 4.7:1
+WRONG_STYLE = "background-color: #c63a33; border: 1px solid #c63a33; color: #ffffff;"  # white text 5.2:1
 GOOD_TEXT = "color: #4ade80;"
 BAD_TEXT = "color: #f87171;"
 
@@ -81,23 +83,29 @@ QLabel#lives {{
 /* ---------- inputs ---------- */
 QLineEdit {{
     background-color: {SURFACE_2};
-    border: 1px solid {BORDER};
+    border: 1px solid {CONTROL_BORDER};
     border-radius: 12px;
     padding: 10px 14px;
     selection-background-color: {ACCENT};
     selection-color: #1b1210;
+    placeholder-text-color: {MUTED};
 }}
 QLineEdit:focus {{
-    border: 1px solid {ACCENT};
+    border: 2px solid {FOCUS};
+    padding: 9px 13px;
 }}
 QComboBox {{
     background-color: {SURFACE_2};
-    border: 1px solid {BORDER};
+    border: 1px solid {CONTROL_BORDER};
     border-radius: 12px;
     padding: 9px 14px;
 }}
 QComboBox:hover {{
-    border: 1px solid #3a4452;
+    border: 1px solid #8a95a5;
+}}
+QComboBox:focus {{
+    border: 2px solid {FOCUS};
+    padding: 8px 13px;
 }}
 QComboBox::drop-down {{
     border: none;
@@ -121,14 +129,18 @@ QComboBox QAbstractItemView {{
 /* ---------- buttons ---------- */
 QPushButton {{
     background-color: {SURFACE_2};
-    border: 1px solid {BORDER};
+    border: 1px solid {CONTROL_BORDER};
     border-radius: 12px;
     padding: 9px 18px;
     font-weight: 600;
 }}
 QPushButton:hover {{
     background-color: #29323e;
-    border: 1px solid #3a4452;
+    border: 1px solid #8a95a5;
+}}
+QPushButton:focus {{
+    border: 2px solid {FOCUS};
+    padding: 8px 17px;
 }}
 QPushButton:pressed {{
     background-color: #151a21;
@@ -155,6 +167,10 @@ QPushButton#primary:hover {{
 QPushButton#primary:pressed {{
     background-color: {ACCENT_PRESS};
 }}
+QPushButton#primary:focus {{
+    border: 2px solid {FOCUS};
+    padding: 7px 16px;
+}}
 QPushButton#primary:disabled {{
     background-color: #3a2724;
     color: #7a5a55;
@@ -164,13 +180,17 @@ QPushButton#ghost {{
     border: 1px solid transparent;
     color: {MUTED};
 }}
+QPushButton#ghost:focus {{
+    border: 2px solid {FOCUS};
+    padding: 8px 17px;
+}}
 QPushButton#ghost:hover {{
     background-color: {SURFACE_2};
     color: {TEXT};
 }}
 QPushButton#answer {{
     background-color: {SURFACE};
-    border: 1px solid {BORDER};
+    border: 1px solid {CONTROL_BORDER};
     border-radius: 14px;
     padding: 12px 18px;
     text-align: left;
@@ -205,7 +225,7 @@ QListWidget::item:selected {{
 /* ---------- sliders ---------- */
 QSlider::groove:horizontal {{
     height: 4px;
-    background: #2a323d;
+    background: #6b7686;
     border-radius: 2px;
 }}
 QSlider::sub-page:horizontal {{
@@ -230,12 +250,12 @@ QScrollBar:vertical {{
     margin: 0;
 }}
 QScrollBar::handle:vertical {{
-    background: #323b47;
+    background: #5b6674;
     border-radius: 5px;
     min-height: 30px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background: #46515f;
+    background: #76808f;
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0;
@@ -249,12 +269,12 @@ QScrollBar:horizontal {{
     margin: 0;
 }}
 QScrollBar::handle:horizontal {{
-    background: #323b47;
+    background: #5b6674;
     border-radius: 5px;
     min-width: 30px;
 }}
 QScrollBar::handle:horizontal:hover {{
-    background: #46515f;
+    background: #76808f;
 }}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
     width: 0;
@@ -263,22 +283,22 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
     background: transparent;
 }}
 
-/* ---------- sidebar ---------- */
-QFrame#sidebar {{
+/* ---------- top navigation bar ---------- */
+QFrame#topbar {{
     background-color: {SIDEBAR};
     border: none;
-    border-right: 1px solid #181d24;
+    border-bottom: 1px solid {BORDER};
 }}
-QFrame#sidebar QLabel {{
+QFrame#topbar QLabel {{
     background-color: transparent;
 }}
 QPushButton#navButton {{
     background-color: transparent;
     border: none;
+    border-bottom: 3px solid transparent;
     color: {MUTED};
-    text-align: left;
-    padding: 12px 16px;
-    border-radius: 12px;
+    padding: 10px 18px 7px 18px;
+    border-radius: 0px;
     font-size: 15px;
     font-weight: 600;
 }}
@@ -290,11 +310,15 @@ QPushButton#navButton:checked {{
     background-color: {ACCENT_SOFT};
     color: {ACCENT_HOVER};
     border: none;
+    border-bottom: 3px solid {ACCENT};
+}}
+QPushButton#navButton:focus {{
+    border: 2px solid {FOCUS};
+    padding: 8px 16px 6px 16px;
 }}
 QFrame#userCard {{
-    background-color: {SURFACE};
-    border: 1px solid #1d232b;
-    border-radius: 14px;
+    background-color: transparent;
+    border: none;
 }}
 QFrame#userCard QLabel {{
     background-color: transparent;
@@ -344,7 +368,7 @@ QFrame#playerBar QSlider {{
 
 QPushButton#gameCard {{
     background-color: {SURFACE};
-    border: 1px solid {BORDER};
+    border: 1px solid {CONTROL_BORDER};
     border-radius: 18px;
     padding: 0px;
     text-align: left;
@@ -357,16 +381,12 @@ QPushButton#gameCard QLabel {{
     background-color: transparent;
 }}
 QLabel#cardTitle {{
+    font-family: "Outfit", "Inter 18pt", "Inter", "Segoe UI", sans-serif;
     font-size: 18px;
     font-weight: 700;
 }}
 QLabel#cardDesc {{
     color: {MUTED};
-}}
-QPushButton#gameCard QLabel#cardIcon {{
-    background-color: {ACCENT_SOFT};
-    border-radius: 14px;
-    font-size: 26px;
 }}
 
 /* pokemon picture panel (light, so the dark silhouette stands out) */
